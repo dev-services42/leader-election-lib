@@ -2,8 +2,8 @@ package election
 
 import (
 	"context"
-	"github.com/dev-services42/leader-election/leader-election/keys"
-	"github.com/dev-services42/leader-election/leader-election/sessions"
+	"github.com/dev-services42/leader-election-lib/leader-election/keys"
+	"github.com/dev-services42/leader-election-lib/leader-election/sessions"
 	"github.com/hashicorp/consul/api"
 	"go.uber.org/zap"
 	"time"

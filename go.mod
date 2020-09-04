@@ -1,4 +1,4 @@
-module github.com/dev-services42/leader-election
+module github.com/dev-services42/leader-election-lib
 
 go 1.14
 
