@@ -3,15 +3,19 @@ package main
 import (
 	"context"
 	"fmt"
+	leader_election2 "github.com/dev-services42/leader-election/leader-election2"
+	"github.com/dev-services42/leader-election/leader-election2/keys"
 	"github.com/dev-services42/leader-election/leader-election2/sessions"
 	"github.com/hashicorp/consul/api"
 	"go.uber.org/zap"
+	"os"
 	"time"
 )
 
 const (
-	ttl         = 10 * time.Second
+	ttl         = 30 * time.Second
 	sessionName = "services/my-service/leader"
+	keyName     = sessionName
 )
 
 func main() {
@@ -24,7 +28,7 @@ func main() {
 	}
 
 	config := api.DefaultConfig() // Create a new api client config
-	config.Address = "127.0.0.1:8500"
+	config.Address = os.Getenv("CONSUL_ADDR")
 	consul, err := api.NewClient(config) // Create a Consul api client
 	if err != nil {
 		panic(err)
@@ -35,16 +39,28 @@ func main() {
 		panic(err)
 	}
 
-	go func() {
-		err := sess.CreateRenew(ctx, ttl, sessionName)
-		if err != nil {
-			logger.Fatal("cannot create/renew session", zap.Error(err))
-		}
-	}()
-
-	for {
-		fmt.Println(sess.GetSessionID())
-		time.Sleep(time.Second)
+	sKeys, err := keys.New(logger, consul, 10*time.Second)
+	if err != nil {
+		panic(err)
 	}
 
+	srv, err := leader_election2.New(
+		logger,
+		consul,
+		sess,
+		sKeys,
+		ttl,
+		sessionName,
+		keyName,
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	masterCh := srv.RunLeaderElection(ctx)
+	for master := range masterCh {
+		fmt.Println(master)
+	}
+
+	<-make(chan int)
 }
