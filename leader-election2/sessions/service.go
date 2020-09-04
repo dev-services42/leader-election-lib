@@ -6,7 +6,6 @@ import (
 	"github.com/hashicorp/consul/api"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
-	"sync"
 	"time"
 )
 
@@ -16,41 +15,35 @@ type Service struct {
 	consul *api.Client
 	logger *zap.Logger
 
-	sessionID   string
-	sessionIDMu *sync.RWMutex
+	sessionIDCh chan string
 }
 
 func New(logger *zap.Logger, consul *api.Client) (*Service, error) {
 	return &Service{
-		consul: consul,
-		logger: logger,
-
-		sessionIDMu: new(sync.RWMutex),
+		consul:      consul,
+		logger:      logger,
+		sessionIDCh: make(chan string),
 	}, nil
 }
 
 func (s *Service) CreateRenew(ctx context.Context, ttl time.Duration, sessionName string) error {
-	nodeName, err := s.consul.Agent().NodeName()
-	if err != nil {
-		return errors.Wrap(err, "cannot get agent node name")
-	}
-
 	fn := func() error {
-		s.sessionIDMu.Lock()
-		s.sessionID = ""
-		s.sessionIDMu.Unlock()
-
 		doneCh := make(chan struct{})
 		defer close(doneCh)
 
 		for {
+			nodeName, err := s.consul.Agent().NodeName()
+			if err != nil {
+				return errors.Wrap(err, "cannot get agent node name")
+			}
+
 			var sessionID string
 			session, err := s.getSessionByName(ctx, nodeName, sessionName)
 			if err != nil {
 				opts := new(api.WriteOptions).WithContext(ctx)
 				sessionID, _, err = s.consul.Session().Create(&api.SessionEntry{
 					Name:     sessionName,
-					Behavior: "release",
+					Behavior: api.SessionBehaviorRelease,
 					TTL:      ttl.String(),
 				}, opts)
 				if err != nil {
@@ -60,9 +53,10 @@ func (s *Service) CreateRenew(ctx context.Context, ttl time.Duration, sessionNam
 				sessionID = session.ID
 			}
 
-			s.sessionIDMu.Lock()
-			s.sessionID = sessionID
-			s.sessionIDMu.Unlock()
+			select {
+			case <-ctx.Done():
+			case s.sessionIDCh <- sessionID:
+			}
 
 			opts := new(api.WriteOptions).WithContext(ctx)
 			err2 := s.consul.Session().RenewPeriodic(ttl.String(), sessionID, opts, doneCh)
@@ -98,9 +92,6 @@ func (s *Service) getSessionByName(ctx context.Context, nodeName, sessionName st
 	return nil, errors.Wrap(ErrNotFound, "session not found")
 }
 
-func (s *Service) GetSessionID() (string, ) {
-	s.sessionIDMu.RLock()
-	defer s.sessionIDMu.RUnlock()
-
-	return s.sessionID
+func (s *Service) GetSessionID() <-chan string {
+	return s.sessionIDCh
 }
