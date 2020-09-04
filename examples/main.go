@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	leader_election2 "github.com/dev-services42/leader-election/leader-election2"
-	"github.com/dev-services42/leader-election/leader-election2/keys"
-	"github.com/dev-services42/leader-election/leader-election2/sessions"
+	"github.com/dev-services42/leader-election/leader-election"
+	"github.com/dev-services42/leader-election/leader-election/keys"
+	"github.com/dev-services42/leader-election/leader-election/sessions"
 	"github.com/hashicorp/consul/api"
 	"go.uber.org/zap"
 	"os"
@@ -44,7 +44,7 @@ func main() {
 		panic(err)
 	}
 
-	srv, err := leader_election2.New(
+	srv, err := election.New(
 		logger,
 		consul,
 		sess,
